@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* No @import of remote fonts here on purpose — the app must work with the
+   network completely off, so type falls back to fonts already on Windows
+   (Georgia for serif headings, Segoe UI/system-ui for body text). */
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-paper text-ink font-sans;
+    font-variant-numeric: tabular-nums;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-serif text-ink;
+  }
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background-color: #cddbd9;
+  }
+}
+
+@layer components {
+  .field-label {
+    @apply mb-1 block text-sm text-ink-soft;
+  }
+  .field-input {
+    @apply w-full rounded border border-paper-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-ledger focus:ring-1 focus:ring-ledger;
+  }
+  .field-error {
+    @apply mt-1 text-xs text-stamp-red;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded bg-ledger px-4 py-2 text-sm font-medium text-white transition hover:bg-ledger-dark disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded border border-paper-line bg-white px-4 py-2 text-sm font-medium text-ink transition hover:bg-paper disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .panel {
+    @apply rounded border border-paper-line bg-white shadow-panel;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-pending {
+    @apply bg-stamp-red/10 text-stamp-red;
+  }
+  .badge-partial {
+    @apply bg-stamp-amber/10 text-stamp-amber;
+  }
+  .badge-paid {
+    @apply bg-stamp-green/10 text-stamp-green;
+  }
+}
+
+@media print {
+  aside,
+  header,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  body {
+    background: white !important;
+  }
+}

@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+dist
+src-tauri/target
+src-tauri/resources
+src-tauri/binaries
+*.db
+*.db-journal
+data/
+.env
+.env.local
