@@ -1,0 +1,99 @@
+name: Build Desktop Installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download Windows Node sidecar
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries
+
+          $url = "https://nodejs.org/dist/latest-v20.x/node-v20.19.5-win-x64.zip"
+          Invoke-WebRequest -Uri $url -OutFile node.zip
+
+          Expand-Archive node.zip -DestinationPath node-extracted -Force
+
+          Copy-Item `
+            "node-extracted/node-v20.19.5-win-x64/node.exe" `
+            "src-tauri/binaries/node-x86_64-pc-windows-msvc.exe"
+
+      - name: Build Next.js
+        run: npm run build
+
+      - name: Build Windows installer
+        run: npm run tauri:build -- --bundles nsis
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shop-Manager-Windows
+          path: src-tauri/target/release/bundle/nsis/*.exe
+
+  macos-arm64:
+    name: Build macOS Apple Silicon
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download macOS ARM64 Node sidecar
+        run: |
+          mkdir -p src-tauri/binaries
+
+          curl -L \
+            https://nodejs.org/dist/latest-v20.x/node-v20.19.5-darwin-arm64.tar.gz \
+            -o node.tar.gz
+
+          tar -xzf node.tar.gz
+
+          cp \
+            node-v20.19.5-darwin-arm64/bin/node \
+            src-tauri/binaries/node-aarch64-apple-darwin
+
+          chmod +x src-tauri/binaries/node-aarch64-apple-darwin
+
+      - name: Build Next.js
+        run: npm run build
+
+      - name: Build macOS DMG
+        run: npm run tauri:build -- --bundles dmg
+
+      - name: Upload macOS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shop-Manager-macOS-Apple-Silicon
+          path: src-tauri/target/release/bundle/dmg/*.dmg
