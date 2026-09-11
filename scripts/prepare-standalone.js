@@ -25,19 +25,16 @@ function copy(src, dest) {
   );
 }
 
-// Copy public assets if they exist
 copy(
   path.join(root, "public"),
   path.join(standaloneDir, "public")
 );
 
-// Copy Next static assets
 copy(
   path.join(root, ".next", "static"),
   path.join(standaloneDir, ".next", "static")
 );
 
-// Copy database schema
 copy(
   path.join(root, "src", "lib", "db", "schema.sql"),
   path.join(standaloneDir, "schema.sql")
