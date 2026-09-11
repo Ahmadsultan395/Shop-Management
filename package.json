@@ -1,85 +1,73 @@
 {
-"name": "shop-manager",
-"version": "1.0.0",
-"private": true,
-"description": "Offline shop purchase & salary management desktop app",
-"main": "electron/main.js",
-"scripts": {
-"dev": "next dev",
-"build": "next build",
-"postbuild": "node scripts/prepare-standalone.js",
-"start": "next start",
-"lint": "next lint",
-"db:migrate": "tsx src/lib/db/migrate.ts",
-"electron:dev": "electron .",
-"electron:build": "npm run build && electron-builder --publish=never"
-},
-"dependencies": {
-"next": "14.2.15",
-"react": "18.3.1",
-"react-dom": "18.3.1",
-"better-sqlite3": "11.3.0",
-"jspdf": "2.5.2",
-"jspdf-autotable": "3.8.4",
-"xlsx": "0.18.5"
-},
-"devDependencies": {
-"@types/node": "20.14.9",
-"@types/react": "18.3.3",
-"@types/react-dom": "18.3.0",
-"@types/better-sqlite3": "7.6.11",
-"typescript": "5.5.3",
-"tailwindcss": "3.4.10",
-"postcss": "8.4.41",
-"autoprefixer": "10.4.20",
-"tsx": "4.16.2",
-"electron": "31.3.1",
-"electron-builder": "24.13.3"
-},
-"build": {
-"appId": "com.shopmanager.desktop",
-"productName": "Shop Manager",
-
-"directories": {
-  "output": "dist-electron"
-},
-
-"files": [
-  "electron/**/*"
-],
-
-"extraResources": [
-  {
-    "from": ".next/standalone",
-    "to": "server",
-    "filter": [
-      "**/*"
-    ]
+  "name": "shop-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline shop purchase & salary management desktop app",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "postbuild": "node scripts/prepare-standalone.js && node scripts/rebuild-native.js",
+    "start": "next start",
+    "lint": "next lint",
+    "db:migrate": "tsx src/lib/db/migrate.ts",
+    "electron:dev": "electron .",
+    "electron:build": "npm run build && electron-builder --publish=never",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "next": "14.2.15",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "better-sqlite3": "11.3.0",
+    "jspdf": "2.5.2",
+    "jspdf-autotable": "3.8.4",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.9",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@types/better-sqlite3": "7.6.11",
+    "typescript": "5.5.3",
+    "tailwindcss": "3.4.10",
+    "postcss": "8.4.41",
+    "autoprefixer": "10.4.20",
+    "tsx": "4.16.2",
+    "electron": "31.3.1",
+    "electron-builder": "24.13.3",
+    "@electron/rebuild": "3.6.1"
+  },
+  "build": {
+    "appId": "com.shopmanager.desktop",
+    "productName": "Shop Manager",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "server",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.business",
+      "icon": "electron/icons/icon.icns"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "electron/icons/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
-],
-
-"asarUnpack": [
-  "server/node_modules/better-sqlite3/**"
-],
-
-"npmRebuild": true,
-
-"mac": {
-  "target": "dmg",
-  "category": "public.app-category.business",
-  "icon": "electron/icons/icon.icns"
-},
-
-"win": {
-  "target": "nsis",
-  "icon": "electron/icons/icon.ico"
-},
-
-"nsis": {
-  "oneClick": false,
-  "allowToChangeInstallationDirectory": true
-}
-
-
-}
 }
