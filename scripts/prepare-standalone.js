@@ -5,48 +5,43 @@ const root = process.cwd();
 const standaloneDir = path.join(root, ".next", "standalone");
 
 if (!fs.existsSync(standaloneDir)) {
-console.error(
-'Error: .next/standalone was not created. Make sure next.config.js has output: "standalone".'
-);
-process.exit(1);
+  console.error(
+    'Error: .next/standalone was not created. Check that next.config.js has output: "standalone".'
+  );
+  process.exit(1);
 }
 
 function copy(src, dest) {
-if (!fs.existsSync(src)) {
-console.warn(Skipping copy — not found: ${src});
-return;
+  if (!fs.existsSync(src)) {
+    console.warn(`Skipping copy — not found: ${src}`);
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.cpSync(src, dest, { recursive: true });
+
+  console.log(
+    `Copied ${path.relative(root, src)} -> ${path.relative(root, dest)}`
+  );
 }
 
-fs.mkdirSync(path.dirname(dest), { recursive: true });
-
-fs.cpSync(src, dest, {
-recursive: true,
-force: true
-});
-
-console.log(
-Copied ${path.relative(root, src)} -> ${path.relative(root, dest)}
-);
-}
-
-// Copy public assets.
+// Copy public assets if they exist
 copy(
-path.join(root, "public"),
-path.join(standaloneDir, "public")
+  path.join(root, "public"),
+  path.join(standaloneDir, "public")
 );
 
-// Copy Next.js static assets.
+// Copy Next static assets
 copy(
-path.join(root, ".next", "static"),
-path.join(standaloneDir, ".next", "static")
+  path.join(root, ".next", "static"),
+  path.join(standaloneDir, ".next", "static")
 );
 
-// Copy database schema.
+// Copy database schema
 copy(
-path.join(root, "src", "lib", "db", "schema.sql"),
-path.join(standaloneDir, "schema.sql")
+  path.join(root, "src", "lib", "db", "schema.sql"),
+  path.join(standaloneDir, "schema.sql")
 );
 
-console.log("");
-console.log("Standalone server ready for Electron packaging.");
-console.log( -> ${path.relative(root, standaloneDir)});
+console.log("\nStandalone server ready for Electron packaging.");
+console.log(`  -> ${path.relative(root, standaloneDir)}`);
