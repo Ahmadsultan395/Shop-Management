@@ -3,53 +3,49 @@ const path = require("node:path");
 const { rebuild } = require("@electron/rebuild");
 
 const root = process.cwd();
+const standaloneDir = path.join(root, ".next", "standalone");
 const electronVersion = require("electron/package.json").version;
 
-async function rebuildNative() {
+async function main() {
+  if (!fs.existsSync(standaloneDir)) {
+    throw new Error(
+      "ERROR: .next/standalone does not exist. next build must finish first."
+    );
+  }
+
   console.log(
     `Rebuilding better-sqlite3 for Electron ${electronVersion}...`
   );
 
-  // First rebuild the normal project node_modules.
-  await rebuild({
-    buildPath: root,
-    electronVersion,
-    arch: process.arch,
-    force: true,
-    onlyModules: ["better-sqlite3"],
-  });
-
-  console.log("Root better-sqlite3 rebuild complete.");
-
-  const standaloneDir = path.join(root, ".next", "standalone");
-  const standaloneBetterSqlite = path.join(
-    standaloneDir,
-    "node_modules",
-    "better-sqlite3"
-  );
-
-  if (!fs.existsSync(standaloneBetterSqlite)) {
-    throw new Error(
-      `better-sqlite3 was not found in ${standaloneDir}/node_modules`
-    );
-  }
-
-  // Rebuild the copy that Next.js placed inside standalone.
   await rebuild({
     buildPath: standaloneDir,
     electronVersion,
     arch: process.arch,
     force: true,
-    onlyModules: ["better-sqlite3"],
+    onlyModules: ["better-sqlite3"]
   });
 
-  console.log(
-    `Standalone better-sqlite3 rebuilt successfully for Electron ${electronVersion}.`
+  const nativeBinary = path.join(
+    standaloneDir,
+    "node_modules",
+    "better-sqlite3",
+    "build",
+    "Release",
+    "better_sqlite3.node"
   );
+
+  if (!fs.existsSync(nativeBinary)) {
+    throw new Error(
+      `ERROR: Electron native binary was not created:\n${nativeBinary}`
+    );
+  }
+
+  console.log("SUCCESS: better-sqlite3 rebuilt for Electron.");
+  console.log(`Binary: ${nativeBinary}`);
 }
 
-rebuildNative().catch((error) => {
-  console.error("\nNative module rebuild FAILED:");
+main().catch((error) => {
+  console.error("Native module rebuild FAILED:");
   console.error(error);
   process.exit(1);
 });
