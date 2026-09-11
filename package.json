@@ -12,8 +12,7 @@
     "lint": "next lint",
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "electron:dev": "electron .",
-    "electron:build": "npm run build && electron-builder --publish=never",
-    "postinstall": "electron-builder install-app-deps"
+    "electron:build": "npm run build && electron-builder --publish=never"
   },
   "dependencies": {
     "next": "14.2.15",
