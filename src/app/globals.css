@@ -74,3 +74,25 @@
     background: white !important;
   }
 }
+
+/* layout water mark */
+@keyframes watermarkMove {
+  0% {
+    transform: translateX(-60px);
+    opacity: 0.35;
+  }
+
+  50% {
+    transform: translateX(60px);
+    opacity: 0.75;
+  }
+
+  100% {
+    transform: translateX(-60px);
+    opacity: 0.35;
+  }
+}
+
+.animate-watermark {
+  animation: watermarkMove 7s ease-in-out infinite;
+}

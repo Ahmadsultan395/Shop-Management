@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasAnyUser } from "@/lib/db/users";
@@ -20,56 +21,58 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const settings = getSettings();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-paper">
+    <div className="relative flex h-screen overflow-hidden bg-paper">
       {/* Sidebar */}
       <Sidebar shopName={settings.shop_name} />
 
       {/* Main Area */}
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Topbar */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <Topbar username={session.username} />
 
-        {/* Content */}
-        <main className="relative flex-1 overflow-y-auto px-8 py-6">
-          {/* ================= WATERMARK ================= */}
-          <div
-            className="
-              pointer-events-none
-              absolute
-              inset-x-0
-              bottom-0
-              z-0
-              flex
-              justify-center
-              select-none
-            "
-            aria-hidden="true"
-          >
-            <div
-              className="
-                mb-8
-                whitespace-nowrap
-                text-center
-                text-3xl
-                font-bold
-                uppercase
-                tracking-[0.3em]
-                text-slate-400/30
-              "
-            >
-              AHMAD
-              <span className="mx-5 text-xl font-medium tracking-normal">
-                •
-              </span>
-              <span className="text-xl font-semibold tracking-[0.15em]">
-                03120685288
-              </span>
-            </div>
-          </div>
+        <main className="flex-1 overflow-y-auto px-8 py-6">{children}</main>
+      </div>
 
-          {/* ================= PAGE CONTENT ================= */}
-          <div className="relative z-10">{children}</div>
-        </main>
+      {/* ================================
+          Bottom Animated Watermark
+          ================================ */}
+      <div className="pointer-events-none fixed bottom-3 left-0 z-[9999] w-full overflow-hidden">
+        <div className="animate-watermark flex items-center justify-center gap-3 whitespace-nowrap">
+          {/* Name */}
+          <span
+            className="
+              bg-gradient-to-r
+              from-slate-700
+              via-slate-900
+              to-slate-500
+              bg-clip-text
+              text-xl
+              font-black
+              uppercase
+              tracking-[0.3em]
+              text-transparent
+              opacity-20
+              sm:text-4xl
+            "
+          >
+            Ahmad
+          </span>
+
+          {/* Dot */}
+          <span className="text-lg font-bold text-slate-500/15">•</span>
+
+          {/* Number */}
+          <span
+            className="
+              text-sm
+              font-semibold
+              tracking-[0.2em]
+              text-slate-500/45
+              sm:text-2xl
+            "
+          >
+            03120685288
+          </span>
+        </div>
       </div>
     </div>
   );

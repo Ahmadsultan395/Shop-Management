@@ -1,108 +1,96 @@
-# Packaging Guide (Developer) — Building ShopManagerSetup.exe
+# Packaging Guide (Developer) — Building Windows & macOS Installers
 
-This turns the Next.js + SQLite source in this repo into a double-click
-Windows installer. You only need to do this on a Windows machine with
-internet access (to fetch the Rust/Node toolchains and packages once) —
-the internet is never needed by the customer who receives the installer.
+This project now uses **Electron** (not Tauri) to package the app for
+Windows and macOS. This is simpler and more reliable than the previous
+Tauri "sidecar" setup because Electron already ships a full Node.js
+runtime internally — there's no separate Node.js binary to download,
+rename, and bundle, and no resource-folder-flattening issues.
 
-This guide has **not been run or compiled** in the sandbox this project was
-written in (no internet/Rust toolchain available there). Follow it on your
-own Windows dev machine and adjust if a version mismatch trips you up —
-the architecture is standard, but exact CLI flags do drift between Tauri
-versions.
+## How it works
 
-## One-time developer machine setup
+- `electron/main.js` is the desktop shell. On launch it:
+  1. Resolves a per-user, always-writable data folder (via Electron's
+     `app.getPath("userData")`).
+  2. Forks the built Next.js **standalone** server (`server.js`) as a
+     child process — using Electron's own bundled Node.js, so nothing
+     extra needs to be installed or bundled separately.
+  3. Waits for the server to respond, then opens a normal window pointed
+     at `http://127.0.0.1:3457`.
+- `electron-builder` packages `electron/main.js` plus the built standalone
+  server folder into a Windows installer (`.exe`, via NSIS) and a macOS
+  disk image (`.dmg`).
 
-1. Install [Node.js 18+](https://nodejs.org) (LTS).
-2. Install [Rust](https://rustup.rs) (`rustup-init.exe`, default options).
-3. Install the Tauri v1 build prerequisites for Windows: Microsoft C++
-   Build Tools and WebView2 (see
-   https://tauri.app/v1/guides/getting-started/prerequisites — WebView2 is
-   preinstalled on Windows 11 and most updated Windows 10 machines).
+## Building locally
 
-## One-time project setup
+You need Node.js 18+ (already installed if you got this far).
 
 ```bash
-cd shop-manager
 npm install
+npm run electron:build
 ```
 
-### 1. Get a Node.js binary to bundle as the sidecar
+This runs, in order:
+1. `next build` — builds the Next.js app.
+2. `postbuild` (`scripts/prepare-standalone.js`) — copies `public/`,
+   `.next/static/`, and `schema.sql` into `.next/standalone/`, since
+   Next.js's standalone output doesn't include those automatically.
+3. `electron-builder` — packages everything into an installer for
+   whichever OS you're running this command on (Windows → `.exe` on a
+   Windows machine, macOS → `.dmg` on a Mac; electron-builder does not
+   reliably cross-build from one OS to another, which is why the GitHub
+   Actions workflow below runs one job per OS).
 
-The packaged app needs to carry its own copy of Node.js so the customer
-never installs anything. Tauri's "sidecar" mechanism expects a renamed
-binary matching your Rust build target triple.
+The finished installer appears under `dist-electron/`.
 
-1. Download the **Windows binary** (not the installer) for Node 18 or 20
-   from https://nodejs.org/en/download — e.g. `node-v20.x.x-win-x64.zip`.
-2. Extract it and copy `node.exe` into this project at:
-   ```
-   src-tauri/binaries/node-x86_64-pc-windows-msvc.exe
-   ```
-   (Run `rustc -Vv` and check the `host:` line if you're not on standard
-   x86_64 Windows — the suffix must match your Rust target triple exactly.)
+## Building both Windows and macOS via GitHub Actions
 
-### 2. Generate app icons
+`.github/workflows/build.yml` builds both platforms in one click, each on
+its native OS runner (so there's no cross-compilation guesswork):
+
+1. Push this project to GitHub if you haven't already.
+2. Go to the repo's **Actions** tab → **Build Desktop Installers** →
+   **Run workflow**.
+3. Wait for both jobs (Windows, macOS) to finish (a few minutes each).
+4. Open the finished run's summary page → **Artifacts** → download
+   `shop-manager-Windows` and `shop-manager-macOS`. Each is a zip
+   containing the `.exe` / `.dmg` respectively.
+
+## Trying it during development
 
 ```bash
-npx @tauri-apps/cli icon path/to/your-logo.png
+npm run build          # build the Next.js app first
+npm run electron:dev   # opens the app in an Electron window
 ```
 
-This fills in `src-tauri/icons/` with all the sizes `tauri.conf.json`
-references (32x32.png, 128x128.png, icon.ico, etc). Use a square PNG, at
-least 512x512, as the source.
+## App icons
 
-### 3. Build the Next.js app + stage it for Tauri
+Placeholder icons are already included at `electron/icons/` (a simple
+navy "S" mark) so builds work out of the box. To use your own logo:
 
 ```bash
-npm run build
+npx electron-icon-builder --input=path/to/logo.png --output=electron/icons --flatten
 ```
 
-This runs `next build` (producing `.next/standalone/`) and then the
-`postbuild` script (`scripts/prepare-standalone.js`), which copies the
-static assets and `schema.sql` into the standalone folder and stages the
-whole thing at `src-tauri/resources/server/` — this is what
-`tauri.conf.json`'s `bundle.resources` packages into the installer.
-
-### 4. Build the Windows installer
-
-```bash
-npm run tauri:build
-```
-
-On success, Tauri prints the location of the generated installer, typically:
-
-```
-src-tauri/target/release/bundle/nsis/Shop Manager_1.0.0_x64-setup.exe
-```
-
-Rename it to `ShopManagerSetup.exe` for delivery if you like — the name is
-cosmetic.
-
-### Trying it during development
-
-```bash
-npm run tauri:dev
-```
-
-This runs the Next.js dev server and opens it in a Tauri window without
-building an installer — good for quickly checking that the desktop shell
-loads correctly. (Note: `main.rs`'s sidecar-spawning setup is written for
-the **built** server; for `tauri:dev` you may prefer to temporarily point
-the window at `http://localhost:3000` instead of spawning the sidecar —
-see the comments in `src-tauri/src/main.rs`.)
-
-## What to test before shipping
-
-Follow `docs/CLIENT_INSTALLATION_GUIDE.md` on a clean Windows machine (or a
-VM) that has never had Node.js installed, with the network disconnected
-after installation, and go through every module once — see the checklist
-in the main `README.md`'s testing section.
+Then copy the generated `icon.ico` (Windows) and `icon.icns` (macOS) into
+`electron/icons/`, replacing the placeholders. `logo.png` should be a
+square image, ideally 512x512 or larger.
 
 ## Where the customer's data lives
 
-The app stores its SQLite database in the standard per-user app-data
-folder (e.g. `%APPDATA%\com.shopmanager.desktop\`), never inside the
-installed Program Files folder — this is set up in `src-tauri/src/main.rs`
-via `app_data_dir()` and passed to the server as `SHOP_MANAGER_DATA_DIR`.
-This is also where `Backup`/`Restore` read and write.
+The SQLite database lives in the OS's standard per-user app-data folder
+(via Electron's `app.getPath("userData")` — e.g. `%APPDATA%\Shop Manager`
+on Windows, `~/Library/Application Support/Shop Manager` on macOS), never
+inside the installed app's own folder. This is also where Backup/Restore
+read and write.
+
+## Common issues
+
+- **"App can't be opened because it is from an unidentified developer"
+  (macOS)**: expected for an unsigned/unnotarized app. Right-click the app
+  → Open, or run `xattr -cr "/Applications/Shop Manager.app"` once.
+- **"Windows protected your PC"**: expected for an unsigned installer.
+  Click "More info" → "Run anyway".
+- Both of the above go away once/if the app is code-signed with a paid
+  Apple Developer / Windows code-signing certificate — not required for
+  internal or small-business distribution, just an extra click for the
+  installer each time.
