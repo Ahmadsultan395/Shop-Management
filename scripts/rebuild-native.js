@@ -1,27 +1,55 @@
-// Electron bundles its own build of Node.js, which has a different native
-// module ABI version than plain Node.js. better-sqlite3's compiled .node
-// binary — built during `npm install` against whatever Node.js ran that
-// install — will not load inside Electron unless it's rebuilt specifically
-// against Electron's ABI. This runs automatically as part of `npm run
-// build` (see package.json "postbuild") so both `electron:dev` and
-// `electron:build` always ship a working binary.
-
+const fs = require("node:fs");
 const path = require("node:path");
 const { rebuild } = require("@electron/rebuild");
 
+const root = process.cwd();
 const electronVersion = require("electron/package.json").version;
-const buildPath = path.join(process.cwd(), ".next", "standalone");
 
-rebuild({
-  buildPath,
-  electronVersion,
-  onlyModules: ["better-sqlite3"],
-  force: true,
-})
-  .then(() => {
-    console.log(`Rebuilt better-sqlite3 for Electron ${electronVersion} in ${buildPath}`);
-  })
-  .catch((err) => {
-    console.error("Native module rebuild failed:", err);
-    process.exit(1);
+async function rebuildNative() {
+  console.log(
+    `Rebuilding better-sqlite3 for Electron ${electronVersion}...`
+  );
+
+  // First rebuild the normal project node_modules.
+  await rebuild({
+    buildPath: root,
+    electronVersion,
+    arch: process.arch,
+    force: true,
+    onlyModules: ["better-sqlite3"],
   });
+
+  console.log("Root better-sqlite3 rebuild complete.");
+
+  const standaloneDir = path.join(root, ".next", "standalone");
+  const standaloneBetterSqlite = path.join(
+    standaloneDir,
+    "node_modules",
+    "better-sqlite3"
+  );
+
+  if (!fs.existsSync(standaloneBetterSqlite)) {
+    throw new Error(
+      `better-sqlite3 was not found in ${standaloneDir}/node_modules`
+    );
+  }
+
+  // Rebuild the copy that Next.js placed inside standalone.
+  await rebuild({
+    buildPath: standaloneDir,
+    electronVersion,
+    arch: process.arch,
+    force: true,
+    onlyModules: ["better-sqlite3"],
+  });
+
+  console.log(
+    `Standalone better-sqlite3 rebuilt successfully for Electron ${electronVersion}.`
+  );
+}
+
+rebuildNative().catch((error) => {
+  console.error("\nNative module rebuild FAILED:");
+  console.error(error);
+  process.exit(1);
+});
