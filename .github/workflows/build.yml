@@ -25,9 +25,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
         run: npm install
+
+      - name: Clean native module
+        shell: bash
+        run: |
+          rm -rf node_modules/better-sqlite3
+          npm install better-sqlite3@11.3.0 --save-exact
+
+      - name: Rebuild better-sqlite3 for Node
+        run: npm rebuild better-sqlite3
 
       - name: Build Electron installer
         run: npm run electron:build
