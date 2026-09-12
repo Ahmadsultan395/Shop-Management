@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "description": "Offline shop purchase & salary management desktop app",
+  "author": "Shop Manager",
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "node scripts/prepare-standalone.js && node scripts/rebuild-native.js",
+    "postbuild": "node scripts/prepare-standalone.js",
     "start": "next start",
     "lint": "next lint",
     "db:migrate": "tsx src/lib/db/migrate.ts",
@@ -50,11 +51,10 @@
       {
         "from": ".next/standalone",
         "to": "server",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       }
     ],
+    "afterPack": "scripts/after-pack.js",
     "mac": {
       "target": "dmg",
       "category": "public.app-category.business",
