@@ -6,8 +6,6 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   experimental: {
-    // Required for src/instrumentation.ts to run at server startup.
-    // Next.js 14 does not enable this by default.
     instrumentationHook: true,
   },
 };
