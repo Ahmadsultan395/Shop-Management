@@ -21,7 +21,6 @@ function resolveDbPath(): string {
 // ---------------------------------------------------------------------------
 // better-sqlite3-compatible wrapper around sql.js
 // ---------------------------------------------------------------------------
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any;
 
@@ -38,9 +37,7 @@ class StatementWrapper {
     const stmt = this.owner.raw.prepare(this.sql);
     try {
       stmt.bind(this.bindAll(params));
-      if (stmt.step()) {
-        return stmt.getAsObject();
-      }
+      if (stmt.step()) return stmt.getAsObject();
       return undefined;
     } finally {
       stmt.free();
@@ -53,9 +50,7 @@ class StatementWrapper {
     try {
       stmt.bind(this.bindAll(params));
       const rows: Row[] = [];
-      while (stmt.step()) {
-        rows.push(stmt.getAsObject());
-      }
+      while (stmt.step()) rows.push(stmt.getAsObject());
       return rows;
     } finally {
       stmt.free();
@@ -72,7 +67,6 @@ class StatementWrapper {
       stmt.free();
     }
     const changes = this.owner.raw.getRowsModified();
-
     let lastInsertRowid = 0;
     try {
       const res = this.owner.raw.exec("SELECT last_insert_rowid() AS id");
@@ -80,11 +74,6 @@ class StatementWrapper {
     } catch {
       lastInsertRowid = 0;
     }
-
-    // Do NOT save here — let the transaction() wrapper or the caller decide.
-    // (If we saved on every run(), an in-progress transaction would be
-    // written to disk with uncommitted state if the process crashed.)
-
     return { changes, lastInsertRowid };
   }
 }
@@ -118,17 +107,7 @@ class DbWrapper {
     }
   }
 
-  /**
-   * better-sqlite3-style transaction wrapper.
-   *
-   * Usage (identical to better-sqlite3):
-   *   const fn = db.transaction(() => { ...writes... });
-   *   const result = fn();
-   *
-   * sql.js has no built-in transaction helper, so we issue BEGIN/COMMIT
-   * manually. On error we ROLLBACK and re-throw. The database is persisted
-   * to disk only after a successful COMMIT.
-   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   transaction<T extends (...args: any[]) => any>(fn: T): T {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const wrapped = (...args: any[]): any => {
@@ -142,7 +121,7 @@ class DbWrapper {
         try {
           this.raw.exec("ROLLBACK");
         } catch {
-          /* ignore rollback failure */
+          /* ignore */
         }
         throw err;
       }
@@ -152,12 +131,14 @@ class DbWrapper {
 }
 
 // ---------------------------------------------------------------------------
-// Module-level state
+// Lazy singleton — database created on first getDb() call.
+// No instrumentation.ts needed.
 // ---------------------------------------------------------------------------
 let dbInstance: DbWrapper | null = null;
+let sqlJsInstance: SqlJsStatic | null = null;
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
 
-async function loadSqlJs(): Promise<SqlJsStatic> {
+function loadSqlJs(): Promise<SqlJsStatic> {
   if (!sqlJsPromise) {
     sqlJsPromise = initSqlJs({
       locateFile: (file: string) => {
@@ -170,14 +151,22 @@ async function loadSqlJs(): Promise<SqlJsStatic> {
   return sqlJsPromise;
 }
 
-async function createConnection(): Promise<DbWrapper> {
-  const dbPath = resolveDbPath();
-  const SQL = await loadSqlJs();
+// Start loading sql.js immediately (async, in background).
+const sqlJsLoading: Promise<void> = loadSqlJs().then((SQL) => {
+  sqlJsInstance = SQL;
+});
 
+function createConnectionSync(): DbWrapper {
+  if (!sqlJsInstance) {
+    throw new Error(
+      "sql.js is still loading. Please retry in a moment (first request after startup only)."
+    );
+  }
+  const dbPath = resolveDbPath();
   const fileExists = fs.existsSync(dbPath);
   const db = fileExists
-    ? new SQL.Database(fs.readFileSync(dbPath))
-    : new SQL.Database();
+    ? new sqlJsInstance.Database(fs.readFileSync(dbPath))
+    : new sqlJsInstance.Database();
 
   const wrapper = new DbWrapper(db, dbPath);
 
@@ -193,24 +182,12 @@ async function createConnection(): Promise<DbWrapper> {
   );
 
   if (!fileExists) wrapper.save();
-
   return wrapper;
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-export async function initDb(): Promise<void> {
-  if (!dbInstance) {
-    dbInstance = await createConnection();
-  }
 }
 
 export function getDb(): DbWrapper {
   if (!dbInstance) {
-    throw new Error(
-      "Database not initialized. Call initDb() once at app startup (src/instrumentation.ts)."
-    );
+    dbInstance = createConnectionSync();
   }
   return dbInstance;
 }
@@ -238,5 +215,13 @@ export function resetDbConnection(): void {
 export function persistDb(): void {
   if (dbInstance) {
     dbInstance.save();
+  }
+}
+
+// Backwards compatibility for anything that awaits initDb().
+export async function initDb(): Promise<void> {
+  await sqlJsLoading;
+  if (!dbInstance) {
+    dbInstance = createConnectionSync();
   }
 }

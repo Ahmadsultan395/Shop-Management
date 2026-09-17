@@ -3,7 +3,7 @@
 // `next build` with output:"standalone" produces `.next/standalone/server.js`
 // plus a trimmed `node_modules`, but it does NOT copy the `public/` folder,
 // the `.next/static/` assets, non-imported files like schema.sql, or the
-// sql.js WASM binary — Next.js expects you to copy those yourself.
+// sql.js dist folder — Next.js expects you to copy those yourself.
 //
 // electron-builder then packages the whole `.next/standalone` folder as-is
 // (see package.json -> build.extraResources), so it must be complete before
@@ -43,17 +43,20 @@ function copyFile(src, dest) {
 
 copy(path.join(root, "public"), path.join(standaloneDir, "public"));
 copy(path.join(root, ".next", "static"), path.join(standaloneDir, ".next", "static"));
+
 copyFile(
   path.join(root, "src", "lib", "db", "schema.sql"),
   path.join(standaloneDir, "schema.sql")
 );
 
-// sql.js ships the WASM binary in node_modules/sql.js/dist/. Next.js's
-// standalone tracer does not pick it up automatically (it's loaded at
-// runtime by locateFile), so copy it next to server.js.
-copyFile(
-  path.join(root, "node_modules", "sql.js", "dist", "sql-wasm.wasm"),
-  path.join(standaloneDir, "sql-wasm.wasm")
+// IMPORTANT: copy the ENTIRE sql.js package (not just the .wasm file).
+// sql.js loads its JavaScript glue (sql-wasm.js) at runtime, and that file
+// requires being inside a proper node_modules/sql.js/dist/ path so its
+// internal require() calls resolve. Copying only sql-wasm.wasm is not enough
+// and causes "Cannot set properties of undefined (setting 'exports')".
+copy(
+  path.join(root, "node_modules", "sql.js"),
+  path.join(standaloneDir, "node_modules", "sql.js")
 );
 
 console.log("\nStandalone server ready for Electron packaging.");
