@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     fs.writeFileSync(tempPath, buffer);
-    const result = validateBackupFile(tempPath);
+    const result = await validateBackupFile(tempPath);
     if (!result.ok) return jsonError(result.message ?? "This file is not a valid backup.", 400);
     return jsonOk({ ok: true });
   } finally {
