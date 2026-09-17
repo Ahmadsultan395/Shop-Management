@@ -9,7 +9,7 @@
 --    UNIQUE constraint so duplicate monthly salary entries are impossible
 --    at the database level, not just in the UI.
 
-PRAGMA foreign_keys = ON;
+-- PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
