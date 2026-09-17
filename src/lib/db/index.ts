@@ -32,12 +32,13 @@ function resolveDbPath(): string {
 class StatementWrapper {
   constructor(private owner: DbWrapper, private sql: string) {}
 
-  private bind(params: unknown[]): unknown[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private bind(params: any[]): any[] {
     return params.map((p) => (p === undefined ? null : p));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get(...params: unknown[]): any {
+  get(...params: any[]): any {
     const stmt = this.owner.raw.prepare(this.sql);
     try {
       stmt.bind(this.bind(params));
@@ -51,7 +52,7 @@ class StatementWrapper {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  all(...params: unknown[]): any[] {
+  all(...params: any[]): any[] {
     const stmt = this.owner.raw.prepare(this.sql);
     try {
       stmt.bind(this.bind(params));
@@ -65,7 +66,8 @@ class StatementWrapper {
     }
   }
 
-  run(...params: unknown[]): { changes: number; lastInsertRowid: number } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  run(...params: any[]): { changes: number; lastInsertRowid: number } {
     const stmt = this.owner.raw.prepare(this.sql);
     try {
       stmt.bind(this.bind(params));
