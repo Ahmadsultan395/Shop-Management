@@ -1,4 +1,5 @@
-import initSqlJs, { Database as SqlJsDatabase } from "sql.js";
+import initSqlJs from "sql.js";
+import type { Database as SqlJsDatabase, SqlJsStatic } from "sql.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -20,28 +21,23 @@ function resolveDbPath(): string {
 // ---------------------------------------------------------------------------
 // better-sqlite3-compatible wrapper around sql.js
 // ---------------------------------------------------------------------------
-// The rest of the app (dashboard.ts, users.ts, suppliers.ts, ...) calls
-// db.prepare(sql).get(...) / .all(...) / .run(...) expecting the
-// better-sqlite3 API. sql.js has a different API, so we wrap it here to
-// keep every other file unchanged.
-//
-// Return types are `any` on purpose — better-sqlite3 also returns `any`
-// from .get() and .all(), which is why the rest of the app assigns the
-// results directly to typed interfaces without casts.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Row = any;
 
 class StatementWrapper {
   constructor(private owner: DbWrapper, private sql: string) {}
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private bind(params: any[]): any[] {
+  private bindAll(params: any[]): any[] {
     return params.map((p) => (p === undefined ? null : p));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get(...params: any[]): any {
+  get(...params: any[]): Row {
     const stmt = this.owner.raw.prepare(this.sql);
     try {
-      stmt.bind(this.bind(params));
+      stmt.bind(this.bindAll(params));
       if (stmt.step()) {
         return stmt.getAsObject();
       }
@@ -52,13 +48,13 @@ class StatementWrapper {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  all(...params: any[]): any[] {
+  all(...params: any[]): Row[] {
     const stmt = this.owner.raw.prepare(this.sql);
     try {
-      stmt.bind(this.bind(params));
-      const rows: Record<string, unknown>[] = [];
+      stmt.bind(this.bindAll(params));
+      const rows: Row[] = [];
       while (stmt.step()) {
-        rows.push(stmt.getAsObject() as Record<string, unknown>);
+        rows.push(stmt.getAsObject());
       }
       return rows;
     } finally {
@@ -70,7 +66,7 @@ class StatementWrapper {
   run(...params: any[]): { changes: number; lastInsertRowid: number } {
     const stmt = this.owner.raw.prepare(this.sql);
     try {
-      stmt.bind(this.bind(params));
+      stmt.bind(this.bindAll(params));
       stmt.step();
     } finally {
       stmt.free();
@@ -85,7 +81,6 @@ class StatementWrapper {
       lastInsertRowid = 0;
     }
 
-    // AUTO-PERSIST: every write is flushed to disk immediately.
     this.owner.save();
 
     return { changes, lastInsertRowid };
@@ -123,18 +118,14 @@ class DbWrapper {
 }
 
 // ---------------------------------------------------------------------------
-// Module-level singleton
+// Module-level state
 // ---------------------------------------------------------------------------
-declare global {
-  // eslint-disable-next-line no-var
-  var __shopManagerDb: DbWrapper | undefined;
-  // eslint-disable-next-line no-var
-  var __sqlJsModule: Promise<typeof import("sql.js").default> | undefined;
-}
+let dbInstance: DbWrapper | null = null;
+let sqlJsPromise: Promise<SqlJsStatic> | null = null;
 
-async function loadSqlJs() {
-  if (!global.__sqlJsModule) {
-    global.__sqlJsModule = initSqlJs({
+async function loadSqlJs(): Promise<SqlJsStatic> {
+  if (!sqlJsPromise) {
+    sqlJsPromise = initSqlJs({
       locateFile: (file: string) => {
         const local = path.join(process.cwd(), "node_modules", "sql.js", "dist", file);
         if (fs.existsSync(local)) return local;
@@ -142,7 +133,7 @@ async function loadSqlJs() {
       },
     });
   }
-  return global.__sqlJsModule;
+  return sqlJsPromise;
 }
 
 async function createConnection(): Promise<DbWrapper> {
@@ -176,18 +167,18 @@ async function createConnection(): Promise<DbWrapper> {
 // Public API
 // ---------------------------------------------------------------------------
 export async function initDb(): Promise<void> {
-  if (!global.__shopManagerDb) {
-    global.__shopManagerDb = await createConnection();
+  if (!dbInstance) {
+    dbInstance = await createConnection();
   }
 }
 
 export function getDb(): DbWrapper {
-  if (!global.__shopManagerDb) {
+  if (!dbInstance) {
     throw new Error(
       "Database not initialized. Call initDb() once at app startup (src/instrumentation.ts)."
     );
   }
-  return global.__shopManagerDb;
+  return dbInstance;
 }
 
 export function getDbFilePath(): string {
@@ -199,19 +190,19 @@ export function getDataDir(): string {
 }
 
 export function resetDbConnection(): void {
-  if (global.__shopManagerDb) {
+  if (dbInstance) {
     try {
-      global.__shopManagerDb.save();
+      dbInstance.save();
     } catch {
       /* ignore */
     }
-    global.__shopManagerDb.close();
-    global.__shopManagerDb = undefined;
+    dbInstance.close();
+    dbInstance = null;
   }
 }
 
 export function persistDb(): void {
-  if (global.__shopManagerDb) {
-    global.__shopManagerDb.save();
+  if (dbInstance) {
+    dbInstance.save();
   }
 }
