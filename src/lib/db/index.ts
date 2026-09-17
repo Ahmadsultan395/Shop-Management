@@ -29,15 +29,16 @@ function resolveDbPath(): string {
 // db.prepare(sql).get(...) / .all(...) / .run(...) expecting the
 // better-sqlite3 API. sql.js has a different API, so we wrap it here to
 // keep every other file unchanged.
+
 class StatementWrapper {
-  constructor(private db: SqlJsDatabase, private sql: string) {}
+  constructor(private owner: DbWrapper, private sql: string) {}
 
   private bind(params: unknown[]): unknown[] {
     return params.map((p) => (p === undefined ? null : p));
   }
 
   get(...params: unknown[]): Record<string, unknown> | undefined {
-    const stmt = this.db.prepare(this.sql);
+    const stmt = this.owner.raw.prepare(this.sql);
     try {
       stmt.bind(this.bind(params));
       if (stmt.step()) {
@@ -50,7 +51,7 @@ class StatementWrapper {
   }
 
   all(...params: unknown[]): Record<string, unknown>[] {
-    const stmt = this.db.prepare(this.sql);
+    const stmt = this.owner.raw.prepare(this.sql);
     try {
       stmt.bind(this.bind(params));
       const rows: Record<string, unknown>[] = [];
@@ -64,23 +65,27 @@ class StatementWrapper {
   }
 
   run(...params: unknown[]): { changes: number; lastInsertRowid: number } {
-    const stmt = this.db.prepare(this.sql);
+    const stmt = this.owner.raw.prepare(this.sql);
     try {
       stmt.bind(this.bind(params));
       stmt.step();
     } finally {
       stmt.free();
     }
-    const changes = this.db.getRowsModified();
+    const changes = this.owner.raw.getRowsModified();
 
     // sql.js doesn't expose lastInsertRowid via the statement, so query it.
     let lastInsertRowid = 0;
     try {
-      const res = this.db.exec("SELECT last_insert_rowid() AS id");
+      const res = this.owner.raw.exec("SELECT last_insert_rowid() AS id");
       lastInsertRowid = Number(res[0]?.values[0]?.[0] ?? 0);
     } catch {
       lastInsertRowid = 0;
     }
+
+    // AUTO-PERSIST: every write is flushed to disk immediately, so no
+    // caller anywhere in the app needs to remember to save manually.
+    this.owner.save();
 
     return { changes, lastInsertRowid };
   }
@@ -90,11 +95,13 @@ class DbWrapper {
   constructor(public raw: SqlJsDatabase, private dbPath: string) {}
 
   prepare(sql: string): StatementWrapper {
-    return new StatementWrapper(this.raw, sql);
+    return new StatementWrapper(this, sql);
   }
 
   exec(sql: string): void {
     this.raw.exec(sql);
+    // exec() can also mutate (e.g. multi-statement scripts), so persist too.
+    this.save();
   }
 
   // better-sqlite3's pragma() is a no-op here — sql.js runs in-memory and
@@ -107,11 +114,16 @@ class DbWrapper {
     this.raw.close();
   }
 
-  // Persist the in-memory database to disk. Called after writes and on a
-  // 30-second interval (see bottom of file).
+  // Persist the in-memory database to disk.
   save(): void {
-    const data = this.raw.export();
-    fs.writeFileSync(this.dbPath, Buffer.from(data));
+    try {
+      const data = this.raw.export();
+      fs.writeFileSync(this.dbPath, Buffer.from(data));
+    } catch (err) {
+      // Never let a save failure crash a request; log and continue.
+      // (Next.js will surface the error in the terminal.)
+      console.error("[db] save failed:", err);
+    }
   }
 }
 
@@ -152,7 +164,7 @@ async function createConnection(): Promise<DbWrapper> {
 
   const wrapper = new DbWrapper(db, dbPath);
 
-  // Apply schema. schema.sql MUST use CREATE TABLE IF NOT EXISTS so this is
+  // Apply schema. schema.sql uses CREATE TABLE IF NOT EXISTS so this is
   // safe to run on every startup.
   const schemaPath = path.join(process.cwd(), "src", "lib", "db", "schema.sql");
   const fallbackSchemaPath = path.join(process.cwd(), "schema.sql");
@@ -166,8 +178,7 @@ async function createConnection(): Promise<DbWrapper> {
     `INSERT OR IGNORE INTO settings (id, shop_name, currency) VALUES (1, 'My Shop', 'PKR')`
   );
 
-  // First run: create the file on disk so it isn't lost if the app is killed
-  // before the first auto-save tick.
+  // First run: create the file on disk immediately.
   if (!fileExists) wrapper.save();
 
   return wrapper;
@@ -222,29 +233,12 @@ export function resetDbConnection(): void {
 }
 
 /**
- * Persist the in-memory database to disk immediately. Call this after any
- * write that the user would be upset to lose (e.g. saving a purchase).
+ * Explicit save hook — kept for backwards compatibility with any code that
+ * already calls it. With auto-persist in run()/exec(), this is now a no-op
+ * safety net rather than something you must remember to call.
  */
 export function persistDb(): void {
   if (global.__shopManagerDb) {
     global.__shopManagerDb.save();
-  }
-}
-
-// Auto-save every 30 seconds as a safety net for writes that don't call
-// persistDb() explicitly.
-if (typeof setInterval !== "undefined") {
-  const timer = setInterval(() => {
-    if (global.__shopManagerDb) {
-      try {
-        global.__shopManagerDb.save();
-      } catch {
-        /* ignore */
-      }
-    }
-  }, 30_000);
-  // Don't keep the Node process alive just for this timer.
-  if (typeof timer === "object" && typeof (timer as { unref?: () => void }).unref === "function") {
-    (timer as { unref: () => void }).unref();
   }
 }
