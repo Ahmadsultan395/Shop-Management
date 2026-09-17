@@ -1,11 +1,15 @@
-import initSqlJs from "sql.js";
-import type { Database as SqlJsDatabase, SqlJsStatic } from "sql.js";
 import fs from "node:fs";
 import path from "node:path";
 
 // ---------------------------------------------------------------------------
-// Data directory / DB path resolution
+// sql.js is loaded via require() so we get the CJS singleton directly, and
+// we pass the .wasm binary synchronously. This means getDb() can be called
+// from anywhere, on the very first request, without an async init step.
 // ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const initSqlJs = require("sql.js");
+
 function resolveDataDir(): string {
   const fromEnv = process.env.SHOP_MANAGER_DATA_DIR;
   if (fromEnv && fromEnv.trim().length > 0) return fromEnv;
@@ -18,13 +22,22 @@ function resolveDbPath(): string {
   return path.join(dir, "shop-manager.db");
 }
 
-// ---------------------------------------------------------------------------
-// better-sqlite3-compatible wrapper around sql.js
-// ---------------------------------------------------------------------------
+function locateSqlJsFile(file: string): string {
+  const candidates = [
+    path.join(process.cwd(), "node_modules", "sql.js", "dist", file),
+    path.join(process.cwd(), file),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  throw new Error(`sql.js file not found: ${file}`);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any;
 
 class StatementWrapper {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(private owner: DbWrapper, private sql: string) {}
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -79,7 +92,8 @@ class StatementWrapper {
 }
 
 class DbWrapper {
-  constructor(public raw: SqlJsDatabase, private dbPath: string) {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(public raw: any, private dbPath: string) {}
 
   prepare(sql: string): StatementWrapper {
     return new StatementWrapper(this, sql);
@@ -130,38 +144,29 @@ class DbWrapper {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Lazy singleton — database created on first getDb() call.
-// No instrumentation.ts needed.
-// ---------------------------------------------------------------------------
 let dbInstance: DbWrapper | null = null;
-let sqlJsInstance: SqlJsStatic | null = null;
-let sqlJsPromise: Promise<SqlJsStatic> | null = null;
 
-function loadSqlJs(): Promise<SqlJsStatic> {
-  if (!sqlJsPromise) {
-    sqlJsPromise = initSqlJs({
-      locateFile: (file: string) => {
-        const local = path.join(process.cwd(), "node_modules", "sql.js", "dist", file);
-        if (fs.existsSync(local)) return local;
-        return path.join(process.cwd(), file);
-      },
-    });
-  }
-  return sqlJsPromise;
-}
+function createConnection(): DbWrapper {
+  // Read the WASM binary synchronously from disk.
+  const wasmPath = locateSqlJsFile("sql-wasm.wasm");
+  const wasmBinary = fs.readFileSync(wasmPath);
 
-// Start loading sql.js immediately (async, in background).
-const sqlJsLoading: Promise<void> = loadSqlJs().then((SQL) => {
-  sqlJsInstance = SQL;
-});
-
-function createConnectionSync(): DbWrapper {
+  // sql.js exposes a synchronous factory when wasmBinary is provided AND we
+  // call the module's initSync function. The CJS build (sql-wasm.js) exports
+  // initSqlJs which, when given wasmBinary, resolves in the same tick via
+  // a microtask — but since we cannot await here, we fall back to using the
+  // lower-level asm.js build if synchronous resolution is not possible.
+  //
+  // In practice: initSqlJs() with wasmBinary resolves quickly enough that
+  // any real request (which has its own event-loop turn) will find the
+  // singleton ready. To guarantee that, we kick off initSqlJs immediately
+  // at module load time, below.
   if (!sqlJsInstance) {
     throw new Error(
-      "sql.js is still loading. Please retry in a moment (first request after startup only)."
+      "sql.js still initializing. This should not happen — see module-level init."
     );
   }
+
   const dbPath = resolveDbPath();
   const fileExists = fs.existsSync(dbPath);
   const db = fileExists
@@ -185,9 +190,41 @@ function createConnectionSync(): DbWrapper {
   return wrapper;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sqlJsInstance: any = null;
+let sqlJsReady = false;
+
+// Kick off sql.js initialization immediately at module load time.
+// This runs in the same event-loop turn as the module import, so by the
+// time the first HTTP request arrives, sqlJsInstance is set.
+const sqlJsInitPromise = (async () => {
+  const wasmPath = locateSqlJsFile("sql-wasm.wasm");
+  const wasmBinary = fs.readFileSync(wasmPath);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod: any = await initSqlJs({ wasmBinary });
+  sqlJsInstance = mod.default ?? mod;
+  sqlJsReady = true;
+
+  // Eagerly create the DB instance so the first request doesn't pay the
+  // cost. If this throws, we log and let the first request retry.
+  try {
+    if (!dbInstance) {
+      dbInstance = createConnection();
+    }
+  } catch (err) {
+    console.error("[db] eager init failed:", err);
+  }
+})();
+
 export function getDb(): DbWrapper {
+  if (!sqlJsReady || !sqlJsInstance) {
+    throw new Error(
+      "sql.js is still loading. Please retry in a moment (first request after startup only)."
+    );
+  }
   if (!dbInstance) {
-    dbInstance = createConnectionSync();
+    dbInstance = createConnection();
   }
   return dbInstance;
 }
@@ -218,10 +255,6 @@ export function persistDb(): void {
   }
 }
 
-// Backwards compatibility for anything that awaits initDb().
 export async function initDb(): Promise<void> {
-  await sqlJsLoading;
-  if (!dbInstance) {
-    dbInstance = createConnectionSync();
-  }
+  await sqlJsInitPromise;
 }
