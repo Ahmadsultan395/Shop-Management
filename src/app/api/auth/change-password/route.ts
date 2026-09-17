@@ -5,6 +5,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { jsonError, jsonOk, isNonEmptyString } from "@/lib/utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const session = getCurrentSession();

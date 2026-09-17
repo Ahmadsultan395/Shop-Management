@@ -3,6 +3,7 @@ import { createBackupSnapshot, formatBackupFilename } from "@/lib/db/backup";
 import { jsonError } from "@/lib/utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   let tempPath: string | null = null;

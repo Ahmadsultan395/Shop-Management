@@ -3,6 +3,7 @@ import { getSettings, updateSettings } from "@/lib/db/settings";
 import { jsonError, jsonOk, isNonEmptyString } from "@/lib/utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   return jsonOk({ settings: getSettings() });

@@ -3,6 +3,7 @@ import { SESSION_COOKIE } from "@/lib/auth/session";
 import { jsonOk } from "@/lib/utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST() {
   cookies().delete(SESSION_COOKIE);

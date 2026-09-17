@@ -6,6 +6,7 @@ import { validateBackupFile } from "@/lib/db/backup";
 import { jsonError, jsonOk } from "@/lib/utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const form = await req.formData().catch(() => null);

@@ -3,6 +3,7 @@ import { getEmployeeById, updateEmployee, setEmployeeActive } from "@/lib/db/emp
 import { jsonError, jsonOk, isNonEmptyString, isNonNegativeNumber } from "@/lib/utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function parseId(idParam: string): number | null {
   const id = Number(idParam);
