@@ -81,7 +81,9 @@ class StatementWrapper {
       lastInsertRowid = 0;
     }
 
-    this.owner.save();
+    // Do NOT save here — let the transaction() wrapper or the caller decide.
+    // (If we saved on every run(), an in-progress transaction would be
+    // written to disk with uncommitted state if the process crashed.)
 
     return { changes, lastInsertRowid };
   }
@@ -114,6 +116,38 @@ class DbWrapper {
     } catch (err) {
       console.error("[db] save failed:", err);
     }
+  }
+
+  /**
+   * better-sqlite3-style transaction wrapper.
+   *
+   * Usage (identical to better-sqlite3):
+   *   const fn = db.transaction(() => { ...writes... });
+   *   const result = fn();
+   *
+   * sql.js has no built-in transaction helper, so we issue BEGIN/COMMIT
+   * manually. On error we ROLLBACK and re-throw. The database is persisted
+   * to disk only after a successful COMMIT.
+   */
+  transaction<T extends (...args: any[]) => any>(fn: T): T {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wrapped = (...args: any[]): any => {
+      this.raw.exec("BEGIN");
+      try {
+        const result = fn(...args);
+        this.raw.exec("COMMIT");
+        this.save();
+        return result;
+      } catch (err) {
+        try {
+          this.raw.exec("ROLLBACK");
+        } catch {
+          /* ignore rollback failure */
+        }
+        throw err;
+      }
+    };
+    return wrapped as T;
   }
 }
 
